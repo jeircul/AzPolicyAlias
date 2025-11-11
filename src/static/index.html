@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azure Policy Aliases Viewer</title>
+    <meta name="description" content="Search and explore Azure Policy aliases">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1 class="title">Azure Policy Aliases Viewer</h1>
+            <div class="stats" id="stats">
+                <div class="stat-item">
+                    <span class="stat-value" id="total-aliases">0</span>
+                    <span class="stat-label">Total Aliases</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="total-namespaces">0</span>
+                    <span class="stat-label">Namespaces</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="total-resource-types">0</span>
+                    <span class="stat-label">Resource Types</span>
+                </div>
+            </div>
+            <div class="cache-info" id="cache-info"></div>
+        </header>
+
+        <!-- Controls -->
+        <div class="controls">
+            <div class="search-section">
+                <input type="text" id="search-input" placeholder="Search aliases (Ctrl/Cmd+K)..." class="search-input"
+                    aria-label="Search aliases" autocomplete="off">
+                <select id="namespace-filter" class="namespace-filter" aria-label="Filter by namespace"
+                    title="Filter by namespace">
+                    <option value="">All Namespaces</option>
+                </select>
+            </div>
+            <div class="action-buttons">
+                <button id="export-btn" class="btn btn-secondary" title="Export to CSV"
+                    aria-label="Export results to CSV">
+                    <span>Export CSV</span>
+                </button>
+                <button id="refresh-btn" class="btn btn-primary" title="Refresh cache (Ctrl/Cmd+R)"
+                    aria-label="Refresh cache">
+                    <span>Refresh Cache</span>
+                </button>
+                <button id="clear-filters-btn" class="btn btn-secondary" title="Clear all filters"
+                    aria-label="Clear filters">
+                    <span>Clear Filters</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading indicator -->
+        <div id="loading" class="loading" role="status" aria-live="polite">
+            <div class="spinner"></div>
+            <span>Loading policy aliases...</span>
+        </div>
+
+        <!-- Error message -->
+        <div id="error" class="error hidden" role="alert" aria-live="assertive">
+            <span class="error-message"></span>
+        </div>
+
+        <!-- Results info -->
+        <div id="results-info" class="results-info hidden" role="status" aria-live="polite">
+            <span id="results-count">0</span> aliases found
+            <span id="query-time" class="query-time"></span>
+        </div>
+
+        <!-- Data table -->
+        <div class="table-container">
+            <table id="aliases-table" class="aliases-table" role="grid">
+                <colgroup>
+                    <col>
+                    <col>
+                    <col>
+                    <col>
+                </colgroup>
+                <thead>
+                    <tr role="row">
+                        <th role="columnheader" class="sortable" data-column="namespace" tabindex="0">
+                            Namespace <span class="sort-indicator"></span>
+                        </th>
+                        <th role="columnheader" class="sortable" data-column="resource_type" tabindex="0">
+                            Resource Type <span class="sort-indicator"></span>
+                        </th>
+                        <th role="columnheader" class="sortable" data-column="alias_name" tabindex="0">
+                            Alias Name <span class="sort-indicator"></span>
+                        </th>
+                        <th role="columnheader" class="sortable" data-column="default_path" tabindex="0">
+                            Default Path <span class="sort-indicator"></span>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="table-body" role="rowgroup">
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div id="pagination" class="pagination hidden" role="navigation" aria-label="Pagination">
+            <button id="prev-btn" class="btn btn-secondary" aria-label="Previous page">Previous</button>
+            <span id="page-info" aria-live="polite">Page 1 of 1</span>
+            <button id="next-btn" class="btn btn-secondary" aria-label="Next page">Next</button>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+
+</html>

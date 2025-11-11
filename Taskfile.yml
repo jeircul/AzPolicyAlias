@@ -1,0 +1,69 @@
+version: "3"
+
+vars:
+  IMAGE_NAME: azpolicyalias
+  REGISTRY: '{{.REGISTRY | default ""}}'
+  TAG: '{{.TAG | default "latest"}}'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  install:
+    desc: Install dependencies using uv
+    cmds:
+      - uv sync
+
+  dev:
+    desc: Run development server locally
+    cmds:
+      - uv run python src/main.py
+
+  docker:build:
+    desc: Build Docker image
+    cmds:
+      - docker build -t {{.IMAGE_NAME}}:{{.TAG}} .
+
+  docker:run:
+    desc: Run Docker container locally
+    cmds:
+      - docker run -p 8000:8000 -e SUBSCRIPTION_ID={{.SUBSCRIPTION_ID}} {{.IMAGE_NAME}}:{{.TAG}}
+    requires:
+      vars: [SUBSCRIPTION_ID]
+
+  docker:push:
+    desc: Push Docker image to registry
+    cmds:
+      - docker tag {{.IMAGE_NAME}}:{{.TAG}} {{.REGISTRY}}/{{.IMAGE_NAME}}:{{.TAG}}
+      - docker push {{.REGISTRY}}/{{.IMAGE_NAME}}:{{.TAG}}
+
+  compose:up:
+    desc: Start with Docker Compose
+    cmds:
+      - docker-compose up --build
+
+  compose:down:
+    desc: Stop Docker Compose
+    cmds:
+      - docker-compose down
+
+  clean:
+    desc: Clean Python cache and build artifacts
+    cmds:
+      - find . -type d -name "__pycache__" -exec rm -rf {} +
+      - find . -type f -name "*.pyc" -delete
+      - find . -type d -name ".mypy_cache" -exec rm -rf {} +
+
+  azure:login:
+    desc: Login to Azure CLI
+    cmds:
+      - az login
+
+  azure:set-sub:
+    desc: Set Azure subscription
+    cmds:
+      - az account set --subscription "{{.SUBSCRIPTION_ID}}"
+    requires:
+      vars: [SUBSCRIPTION_ID]

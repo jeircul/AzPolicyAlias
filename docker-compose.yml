@@ -1,0 +1,16 @@
+services:
+  azure-policy-viewer:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SUBSCRIPTION_ID=${SUBSCRIPTION_ID}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
