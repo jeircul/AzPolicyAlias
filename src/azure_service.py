@@ -7,18 +7,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from azure.core.exceptions import (
-    AzureError,
-    ClientAuthenticationError,
-    HttpResponseError,
-    ServiceRequestError,
-)
-from azure.identity import (
-    AzureCliCredential,
-    ChainedTokenCredential,
-    DefaultAzureCredential,
-    ManagedIdentityCredential,
-)
+from azure.core.exceptions import (AzureError, ClientAuthenticationError,
+                                   HttpResponseError, ServiceRequestError)
+from azure.identity import (AzureCliCredential, ChainedTokenCredential,
+                            ClientAssertionCredential, DefaultAzureCredential)
 from azure.mgmt.resource import ResourceManagementClient
 
 logger = logging.getLogger(__name__)
@@ -76,26 +68,47 @@ class AzurePolicyService:
     def _setup_client(self):
         """Setup Azure client with robust authentication chain"""
         try:
-            # Get client_id from environment for UAMI (required for non-AKS Kubernetes)
+            # Get required environment variables
             client_id = os.getenv("AZURE_CLIENT_ID")
+            tenant_id = os.getenv("AZURE_TENANT_ID")
+            token_file = os.getenv(
+                "AZURE_FEDERATED_TOKEN_FILE",
+                "/var/run/secrets/kubernetes.io/serviceaccount/token",
+            )
 
-            # Create a chained credential with multiple fallback options
-            credentials = [AzureCliCredential()]
+            credentials = []
 
-            # Add ManagedIdentityCredential with client_id if available (for UAMI)
-            if client_id:
+            # Try Azure CLI first (for local development)
+            try:
+                cli_cred = AzureCliCredential()
+                cli_cred.get_token("https://management.azure.com/.default")
+                credentials.append(cli_cred)
+                logger.info("Azure CLI credential available")
+            except Exception:  # pylint: disable=broad-except
+                logger.info("Azure CLI credential not available")
+
+            # For Kubernetes with federated identity (OKE with UAMI)
+            if client_id and tenant_id and os.path.exists(token_file):
                 logger.info(
-                    "Using ManagedIdentityCredential with client_id prefix: %s",
-                    client_id[:8],
+                    "Using federated identity with client_id: %s", client_id[:8]
                 )
-                credentials.append(ManagedIdentityCredential(client_id=client_id))
-            else:
-                # Fallback to system-assigned identity
-                logger.info("Using ManagedIdentityCredential (system-assigned)")
-                credentials.append(ManagedIdentityCredential())
 
-            # Add DefaultAzureCredential as final fallback
-            credentials.append(DefaultAzureCredential())
+                def read_token():
+                    """Read the service account token"""
+                    with open(token_file, "r", encoding="utf-8") as f:
+                        return f.read().strip()
+
+                federated_cred = ClientAssertionCredential(
+                    tenant_id=tenant_id,
+                    client_id=client_id,
+                    func=read_token,
+                )
+                credentials.append(federated_cred)
+
+            # Fallback to default credential
+            if not credentials:
+                logger.info("Using DefaultAzureCredential as fallback")
+                credentials.append(DefaultAzureCredential())
 
             credential = ChainedTokenCredential(*credentials)
 
