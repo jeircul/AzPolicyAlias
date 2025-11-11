@@ -75,22 +75,24 @@ class AzurePolicyService:
         try:
             # Get client_id from environment for UAMI (required for non-AKS Kubernetes)
             client_id = os.getenv("AZURE_CLIENT_ID")
-            
+
             # Create a chained credential with multiple fallback options
             credentials = [AzureCliCredential()]
-            
+
             # Add ManagedIdentityCredential with client_id if available (for UAMI)
             if client_id:
-                logger.info(f"Using ManagedIdentityCredential with client_id: {client_id[:8]}...")
+                logger.info(
+                    f"Using ManagedIdentityCredential with client_id: {client_id[:8]}..."
+                )
                 credentials.append(ManagedIdentityCredential(client_id=client_id))
             else:
                 # Fallback to system-assigned identity
                 logger.info("Using ManagedIdentityCredential (system-assigned)")
                 credentials.append(ManagedIdentityCredential())
-            
+
             # Add DefaultAzureCredential as final fallback
             credentials.append(DefaultAzureCredential())
-            
+
             credential = ChainedTokenCredential(*credentials)
 
             # Test the credential
