@@ -11,7 +11,7 @@ dependencies = [
     "azure-mgmt-resource==23.1.1",
     "azure-identity==1.19.0",
     "pydantic==2.10.6",
-    "aiofiles==24.1.0",
+    "aiofiles==25.1.0",
 ]
 
 [build-system]
