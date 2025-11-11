@@ -8,7 +8,7 @@ license = { text = "MIT" }
 dependencies = [
     "fastapi==0.121.1",
     "uvicorn[standard]==0.38.0",
-    "azure-mgmt-resource==23.1.1",
+    "azure-mgmt-resource==24.0.0",
     "azure-identity==1.19.0",
     "pydantic==2.12.4",
     "aiofiles==25.1.0",
