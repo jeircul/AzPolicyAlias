@@ -1,24 +1,17 @@
+import asyncio
 import logging
 import os
-import asyncio
 import time
-from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
-from azure.identity import (
-    DefaultAzureCredential,
-    AzureCliCredential,
-    ManagedIdentityCredential,
-    ChainedTokenCredential,
-)
-from azure.mgmt.resource import ResourceManagementClient
-from azure.core.exceptions import (
-    AzureError,
-    ClientAuthenticationError,
-    HttpResponseError,
-    ServiceRequestError,
-)
-from azure.core.pipeline.policies import RetryPolicy
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+from azure.core.exceptions import (AzureError, ClientAuthenticationError,
+                                   HttpResponseError, ServiceRequestError)
+from azure.core.pipeline.policies import RetryPolicy
+from azure.identity import (AzureCliCredential, ChainedTokenCredential,
+                            DefaultAzureCredential, ManagedIdentityCredential)
+from azure.mgmt.resource import ResourceManagementClient
 
 logger = logging.getLogger(__name__)
 
@@ -173,8 +166,8 @@ class AzurePolicyService:
             failed_providers = []
 
             # Process providers in parallel batches
-            from concurrent.futures import ThreadPoolExecutor, as_completed
             import threading
+            from concurrent.futures import ThreadPoolExecutor, as_completed
 
             lock = threading.Lock()
 
