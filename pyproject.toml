@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
-    "fastapi==0.115.6",
+    "fastapi==0.121.1",
     "uvicorn[standard]==0.34.0",
     "azure-mgmt-resource==23.1.1",
     "azure-identity==1.19.0",
