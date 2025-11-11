@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -11,7 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from azure_service import AzurePolicyService
+from azure_service import AzurePolicyService  # pylint: disable=import-error
 
 # Configure structured logging
 logging.basicConfig(
@@ -144,8 +145,6 @@ async def health_check():
 
     Returns system status and basic information
     """
-    from datetime import datetime
-
     return HealthResponse(
         status="healthy",
         subscription_id=subscription_id[:8] + "..." if subscription_id else "not-set",
@@ -163,11 +162,11 @@ async def get_statistics():
     try:
         stats = await azure_service.get_statistics()
         return StatisticsResponse(**stats)
-    except Exception as e:
-        logger.error(f"Error getting statistics: {e}", exc_info=True)
+    except Exception as err:
+        logger.error("Error getting statistics: %s", err, exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve statistics: {str(e)}"
-        )
+            status_code=500, detail=f"Failed to retrieve statistics: {err}"
+        ) from err
 
 
 @app.get("/api/aliases", response_model=AliasesResponse, tags=["Data"])
@@ -202,11 +201,11 @@ async def get_aliases(
             count=len(aliases),
             query_time_ms=round(query_time_ms, 2),
         )
-    except Exception as e:
-        logger.error(f"Error getting aliases: {e}", exc_info=True)
+    except Exception as err:
+        logger.error("Error getting aliases: %s", err, exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve aliases: {str(e)}"
-        )
+            status_code=500, detail=f"Failed to retrieve aliases: {err}"
+        ) from err
 
 
 @app.get("/api/namespaces", response_model=NamespacesResponse, tags=["Data"])
@@ -225,15 +224,14 @@ async def get_namespaces(
                 namespaces=[ns["namespace"] for ns in namespace_data],
                 with_counts=[NamespaceInfo(**ns) for ns in namespace_data],
             )
-        else:
-            aliases = await azure_service.get_policy_aliases()
-            namespaces = sorted(set(alias["namespace"] for alias in aliases))
-            return NamespacesResponse(namespaces=namespaces)
-    except Exception as e:
-        logger.error(f"Error getting namespaces: {e}", exc_info=True)
+        aliases = await azure_service.get_policy_aliases()
+        namespaces = sorted(set(alias["namespace"] for alias in aliases))
+        return NamespacesResponse(namespaces=namespaces)
+    except Exception as err:
+        logger.error("Error getting namespaces: %s", err, exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve namespaces: {str(e)}"
-        )
+            status_code=500, detail=f"Failed to retrieve namespaces: {err}"
+        ) from err
 
 
 @app.post("/api/refresh", response_model=RefreshResponse, tags=["Cache"])
@@ -257,17 +255,17 @@ async def refresh_cache():
             statistics=StatisticsResponse(**stats),
             refresh_time_ms=round(refresh_time_ms, 2),
         )
-    except Exception as e:
-        logger.error(f"Error refreshing cache: {e}", exc_info=True)
+    except Exception as err:
+        logger.error("Error refreshing cache: %s", err, exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Failed to refresh cache: {str(e)}"
-        )
+            status_code=500, detail=f"Failed to refresh cache: {err}"
+        ) from err
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler for unexpected errors"""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    logger.error("Unhandled exception: %s", exc, exc_info=True)
     return JSONResponse(
         status_code=500,
         content={"detail": "An unexpected error occurred", "type": type(exc).__name__},

@@ -2,13 +2,13 @@ import asyncio
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from azure.core.exceptions import (AzureError, ClientAuthenticationError,
                                    HttpResponseError, ServiceRequestError)
-from azure.core.pipeline.policies import RetryPolicy
 from azure.identity import (AzureCliCredential, ChainedTokenCredential,
                             DefaultAzureCredential, ManagedIdentityCredential)
 from azure.mgmt.resource import ResourceManagementClient
@@ -16,7 +16,7 @@ from azure.mgmt.resource import ResourceManagementClient
 logger = logging.getLogger(__name__)
 
 
-class RetryWithBackoff:
+class RetryWithBackoff:  # pylint: disable=too-few-public-methods
     """Exponential backoff retry helper"""
 
     def __init__(self, max_retries: int = 3, base_delay: float = 1.0):
@@ -30,23 +30,25 @@ class RetryWithBackoff:
         for attempt in range(self.max_retries):
             try:
                 return await func(*args, **kwargs)
-            except (ServiceRequestError, HttpResponseError) as e:
-                last_exception = e
+            except ClientAuthenticationError as err:
+                logger.error("Authentication error: %s", err)
+                raise
+            except (ServiceRequestError, HttpResponseError) as err:
+                last_exception = err
                 if attempt < self.max_retries - 1:
                     delay = self.base_delay * (2**attempt)
                     logger.warning(
-                        f"Attempt {attempt + 1} failed: {e}. Retrying in {delay}s..."
+                        "Attempt %s failed: %s. Retrying in %ss...",
+                        attempt + 1,
+                        err,
+                        delay,
                     )
                     await asyncio.sleep(delay)
                 else:
-                    logger.error(f"All {self.max_retries} attempts failed")
-            except ClientAuthenticationError as e:
-                # Don't retry auth errors
-                logger.error(f"Authentication error: {e}")
-                raise
-            except Exception as e:
-                last_exception = e
-                logger.error(f"Unexpected error: {e}")
+                    logger.error("All %s attempts failed", self.max_retries)
+            except Exception as err:  # pylint: disable=broad-except
+                last_exception = err
+                logger.error("Unexpected error: %s", err)
                 raise
 
         raise last_exception if last_exception else Exception("Retry failed")
@@ -75,7 +77,8 @@ class AzurePolicyService:
             # Add ManagedIdentityCredential with client_id if available (for UAMI)
             if client_id:
                 logger.info(
-                    f"Using ManagedIdentityCredential with client_id: {client_id[:8]}..."
+                    "Using ManagedIdentityCredential with client_id prefix: %s",
+                    client_id[:8],
                 )
                 credentials.append(ManagedIdentityCredential(client_id=client_id))
             else:
@@ -92,16 +95,16 @@ class AzurePolicyService:
             try:
                 credential.get_token("https://management.azure.com/.default")
                 logger.info("Successfully authenticated with Azure")
-            except Exception as e:
-                logger.warning(f"Initial credential test failed: {e}")
+            except Exception as err:  # pylint: disable=broad-except
+                logger.warning("Initial credential test failed: %s", err)
 
             # Create client with custom retry policy
             self.client = ResourceManagementClient(
                 credential, self.subscription_id, logging_enable=True
             )
 
-        except Exception as e:
-            logger.error(f"Failed to setup Azure client: {e}")
+        except Exception as err:  # pylint: disable=broad-except
+            logger.error("Failed to setup Azure client: %s", err)
             raise
 
     def _is_cache_valid(self) -> bool:
@@ -115,8 +118,10 @@ class AzurePolicyService:
     ) -> List[Dict[str, Any]]:
         """Get all policy aliases with caching and retry logic"""
         if not force_refresh and self._is_cache_valid():
+            cached_count = len(self.cache.get("aliases", []))
             logger.info(
-                f"Returning cached policy aliases ({len(self.cache.get('aliases', []))} items)"
+                "Returning cached policy aliases (%d items)",
+                cached_count,
             )
             return self.cache.get("aliases", [])
 
@@ -134,11 +139,11 @@ class AzurePolicyService:
             self.cache["aliases"] = aliases
             self.cache_timestamp = datetime.now()
 
-            logger.info(f"Successfully cached {len(aliases)} policy aliases")
+            logger.info("Successfully cached %d policy aliases", len(aliases))
             return aliases
 
-        except Exception as e:
-            logger.error(f"Failed to fetch policy aliases: {e}")
+        except Exception as err:  # pylint: disable=broad-except
+            logger.error("Failed to fetch policy aliases: %s", err)
             # Return stale cache if available
             if self.cache.get("aliases"):
                 logger.warning("Returning stale cache due to fetch failure")
@@ -150,36 +155,26 @@ class AzurePolicyService:
         if not self.client:
             raise ValueError("Azure client not initialized")
 
+        # pylint: disable=too-many-locals,too-many-statements
         try:
             start_time = time.time()
 
-            # First get list of all provider namespaces
             providers_list = list(self.client.providers.list())
             fetch_time = time.time() - start_time
-
             logger.info(
-                f"Fetched {len(providers_list)} provider namespaces in {fetch_time:.2f}s"
+                "Fetched %d provider namespaces in %.2fs",
+                len(providers_list),
+                fetch_time,
             )
 
-            all_aliases = []
+            all_aliases: List[Dict[str, Any]] = []
             providers_with_aliases = 0
-            failed_providers = []
-
-            # Process providers in parallel batches
-            import threading
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-
+            failed_providers: List[str] = []
             lock = threading.Lock()
-
-            # Azure ARM API limits:
-            # - 12,000 reads per hour per subscription (200/min)
-            # - We have ~312 providers, so we can safely use 20-30 workers
-            # - This keeps us well under the rate limit while maximizing speed
             max_workers = 25
 
-            def fetch_provider_aliases(provider_summary):
-                """Fetch aliases for a single provider"""
-                namespace = provider_summary.namespace
+            def fetch_provider_aliases(provider_summary) -> List[Dict[str, Any]]:
+                namespace = getattr(provider_summary, "namespace", None)
                 if not namespace:
                     return []
 
@@ -187,96 +182,102 @@ class AzurePolicyService:
                     provider = self.client.providers.get(
                         namespace, expand="resourceTypes/aliases"
                     )
+                except AzureError as err:
+                    logger.warning(
+                        "Failed to retrieve provider %s metadata: %s",
+                        namespace,
+                        err,
+                    )
+                    return []
 
-                    if not provider.resource_types:
-                        return []
+                aliases: List[Dict[str, Any]] = []
+                for resource_type in provider.resource_types or []:
+                    for alias in (resource_type.aliases or []):
+                        default_pattern = None
+                        if (
+                            hasattr(alias, "default_pattern")
+                            and alias.default_pattern
+                        ):
+                            pattern_obj = alias.default_pattern
+                            default_pattern = {
+                                "phrase": getattr(pattern_obj, "phrase", None),
+                                "variable": getattr(pattern_obj, "variable", None),
+                                "type": getattr(pattern_obj, "type", None),
+                            }
 
-                    aliases = []
-                    for resource_type in provider.resource_types:
-                        if not resource_type.aliases:
-                            continue
-
-                        for alias in resource_type.aliases:
-                            # Extract default_pattern as dict if it exists
-                            default_pattern = None
-                            if (
-                                hasattr(alias, "default_pattern")
-                                and alias.default_pattern
-                            ):
-                                pattern_obj = alias.default_pattern
-                                default_pattern = {
-                                    "phrase": getattr(pattern_obj, "phrase", None),
-                                    "variable": getattr(pattern_obj, "variable", None),
-                                    "type": getattr(pattern_obj, "type", None),
-                                }
-
-                            alias_data = {
+                        aliases.append(
+                            {
                                 "namespace": namespace,
                                 "resource_type": resource_type.resource_type,
                                 "alias_name": alias.name,
-                                "default_path": alias.default_path,
+                                "default_path": getattr(alias, "default_path", None),
                                 "default_pattern": default_pattern,
                                 "type": getattr(alias, "type", None),
                             }
-                            aliases.append(alias_data)
+                        )
 
-                    return aliases
+                return aliases
 
-                except Exception as e:
-                    logger.warning(f"Failed to fetch aliases for {namespace}: {e}")
-                    with lock:
-                        failed_providers.append(namespace)
-                    return []
-
-            # Process all providers in parallel (no batching needed at this scale)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                future_to_provider = {
+                futures = {
                     executor.submit(fetch_provider_aliases, provider): provider
                     for provider in providers_list
                 }
 
-                completed = 0
-                for future in as_completed(future_to_provider):
-                    aliases = future.result()
-                    if aliases:
-                        with lock:
-                            providers_with_aliases += 1
-                            all_aliases.extend(aliases)
-
-                    completed += 1
-                    # Log progress every 100 providers
-                    if completed % 100 == 0:
-                        elapsed = time.time() - start_time
-                        logger.info(
-                            f"Progress: {completed}/{len(providers_list)} providers, "
-                            f"{len(all_aliases)} aliases found ({elapsed:.1f}s)"
+                for future in as_completed(futures):
+                    provider_summary = futures[future]
+                    try:
+                        provider_aliases = future.result()
+                        if provider_aliases:
+                            with lock:
+                                all_aliases.extend(provider_aliases)
+                                providers_with_aliases += 1
+                    except AzureError as err:
+                        namespace = getattr(provider_summary, "namespace", "unknown")
+                        logger.warning(
+                            "Azure error fetching aliases for %s: %s",
+                            namespace,
+                            err,
                         )
+                        failed_providers.append(namespace)
+                    except Exception as err:  # pylint: disable=broad-except
+                        namespace = getattr(provider_summary, "namespace", "unknown")
+                        logger.error(
+                            "Unexpected error fetching aliases for %s: %s",
+                            namespace,
+                            err,
+                        )
+                        failed_providers.append(namespace)
 
-            total_time = time.time() - start_time
-            logger.info(f"Providers with aliases: {providers_with_aliases}")
-            if failed_providers:
-                logger.warning(
-                    f"Failed to fetch {len(failed_providers)} providers: {', '.join(failed_providers[:5])}{'...' if len(failed_providers) > 5 else ''}"
-                )
             logger.info(
-                f"Successfully processed {len(all_aliases)} policy aliases "
-                f"from {len(providers_list)} providers in {total_time:.2f}s"
+                "Aggregated %d aliases from %d providers",
+                len(all_aliases),
+                providers_with_aliases,
             )
+
+            if failed_providers:
+                display_failed = ", ".join(failed_providers[:5])
+                logger.warning(
+                    "Failed providers (%d): %s",
+                    len(failed_providers),
+                    display_failed,
+                )
+
+            duration = time.time() - start_time
+            logger.info("Total alias fetch duration: %.2fs", duration)
+
             return all_aliases
 
-        except AzureError as e:
-            logger.error(f"Azure API error: {type(e).__name__}: {e}")
+        except AzureError as err:
+            logger.error("Azure API error while fetching aliases: %s", err)
             raise
-        except Exception as e:
-            logger.error(
-                f"Unexpected error fetching policy aliases: {type(e).__name__}: {e}"
-            )
+        except Exception as err:  # pylint: disable=broad-except
+            logger.error("Unexpected error while fetching aliases: %s", err)
             raise
 
     async def get_statistics(self) -> Dict[str, Any]:
         """Get comprehensive statistics about policy aliases"""
         aliases = await self.get_policy_aliases()
-
         namespaces = set()
         resource_types = set()
         types_by_namespace: Dict[str, int] = {}
