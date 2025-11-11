@@ -1,3 +1,6 @@
+import os
+import logging
+import time
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
@@ -6,9 +9,6 @@ from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any
 from pathlib import Path
-import os
-import logging
-import time
 from azure_service import AzurePolicyService
 
 # Configure structured logging
