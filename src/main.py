@@ -263,7 +263,7 @@ async def refresh_cache():
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
+async def global_exception_handler(_request: Request, exc: Exception):
     """Global exception handler for unexpected errors"""
     logger.error("Unhandled exception: %s", exc, exc_info=True)
     return JSONResponse(

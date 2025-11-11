@@ -1,16 +1,24 @@
 import asyncio
 import logging
 import os
-import time
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from azure.core.exceptions import (AzureError, ClientAuthenticationError,
-                                   HttpResponseError, ServiceRequestError)
-from azure.identity import (AzureCliCredential, ChainedTokenCredential,
-                            DefaultAzureCredential, ManagedIdentityCredential)
+from azure.core.exceptions import (
+    AzureError,
+    ClientAuthenticationError,
+    HttpResponseError,
+    ServiceRequestError,
+)
+from azure.identity import (
+    AzureCliCredential,
+    ChainedTokenCredential,
+    DefaultAzureCredential,
+    ManagedIdentityCredential,
+)
 from azure.mgmt.resource import ResourceManagementClient
 
 logger = logging.getLogger(__name__)
@@ -192,12 +200,9 @@ class AzurePolicyService:
 
                 aliases: List[Dict[str, Any]] = []
                 for resource_type in provider.resource_types or []:
-                    for alias in (resource_type.aliases or []):
+                    for alias in resource_type.aliases or []:
                         default_pattern = None
-                        if (
-                            hasattr(alias, "default_pattern")
-                            and alias.default_pattern
-                        ):
+                        if hasattr(alias, "default_pattern") and alias.default_pattern:
                             pattern_obj = alias.default_pattern
                             default_pattern = {
                                 "phrase": getattr(pattern_obj, "phrase", None),
