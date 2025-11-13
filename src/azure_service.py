@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from azure.core.exceptions import (AzureError, ClientAuthenticationError,
                                    HttpResponseError, ServiceRequestError)
 from azure.identity import (AzureCliCredential, ChainedTokenCredential,
-                            ClientAssertionCredential, DefaultAzureCredential)
+                            ClientSecretCredential, DefaultAzureCredential)
 from azure.mgmt.resource import ResourceManagementClient
 
 logger = logging.getLogger(__name__)
@@ -71,10 +71,7 @@ class AzurePolicyService:
             # Get required environment variables
             client_id = os.getenv("AZURE_CLIENT_ID")
             tenant_id = os.getenv("AZURE_TENANT_ID")
-            token_file = os.getenv(
-                "AZURE_FEDERATED_TOKEN_FILE",
-                "/var/run/secrets/kubernetes.io/serviceaccount/token",
-            )
+            client_secret = os.getenv("AZURE_CLIENT_SECRET")
 
             credentials = []
 
@@ -87,23 +84,15 @@ class AzurePolicyService:
             except Exception:  # pylint: disable=broad-except
                 logger.info("Azure CLI credential not available")
 
-            # For Kubernetes with federated identity (OKE with UAMI)
-            if client_id and tenant_id and os.path.exists(token_file):
-                logger.info(
-                    "Using federated identity with client_id: %s", client_id[:8]
-                )
-
-                def read_token():
-                    """Read the service account token"""
-                    with open(token_file, "r", encoding="utf-8") as f:
-                        return f.read().strip()
-
-                federated_cred = ClientAssertionCredential(
+            # Use service principal with client secret (for Kubernetes/production)
+            if client_id and tenant_id and client_secret:
+                logger.info("Using service principal with client_id: %s", client_id[:8])
+                sp_cred = ClientSecretCredential(
                     tenant_id=tenant_id,
                     client_id=client_id,
-                    func=read_token,
+                    client_secret=client_secret,
                 )
-                credentials.append(federated_cred)
+                credentials.append(sp_cred)
 
             # Fallback to default credential
             if not credentials:

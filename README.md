@@ -32,11 +32,22 @@ Visit <http://localhost:8000>
 
 **Prerequisites:**
 
-- UAMI with federated credential for your cluster
-- Service account subject: `system:serviceaccount:default:azpolicyalias`
+- Azure Service Principal with `Reader` role on the subscription
+- Kubernetes secret with service principal credentials
+
+**Create the secret:**
 
 ```bash
-# Update k8s/helmrelease.yaml with your values, then:
+kubectl create secret generic azpolicyalias-secrets \
+  --from-literal=AZURE_CLIENT_ID=<service-principal-app-id> \
+  --from-literal=AZURE_TENANT_ID=<tenant-id> \
+  --from-literal=AZURE_CLIENT_SECRET=<service-principal-secret> \
+  --from-literal=SUBSCRIPTION_ID=<subscription-id>
+```
+
+**Deploy:**
+
+```bash
 kubectl apply -f k8s/helmrelease.yaml
 ```
 
@@ -46,11 +57,12 @@ CI/CD builds and pushes the Docker image automatically.
 
 **Local**: Uses Azure CLI credentials (`az login`)
 
-**Production**: Set these in `k8s/helmrelease.yaml`:
+**Production**: Kubernetes secret `azpolicyalias-secrets` with:
 
-- `SUBSCRIPTION_ID`
-- `AZURE_CLIENT_ID` (UAMI)
-- `AZURE_TENANT_ID`
+- `SUBSCRIPTION_ID` - Your Azure subscription ID
+- `AZURE_CLIENT_ID` - Service principal application ID
+- `AZURE_TENANT_ID` - Azure tenant ID
+- `AZURE_CLIENT_SECRET` - Service principal secret
 
 ## 🎯 Usage
 
@@ -65,7 +77,7 @@ CI/CD builds and pushes the Docker image automatically.
 - **Backend**: FastAPI with Azure SDK
 - **Frontend**: Vanilla JS with Tokyo Night theme
 - **Caching**: In-memory with 1-hour TTL
-- **Auth**: ChainedTokenCredential (CLI → Managed Identity → Default)
+- **Auth**: ChainedTokenCredential (CLI → Service Principal → Default)
 
 ## 📖 Documentation
 
