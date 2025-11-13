@@ -31,9 +31,9 @@ spec:
         strategy: RollingUpdate
         annotations:
           reloader.stakater.com/auto: "true"
-        pod:
-          imagePullSecrets:
-            - name: ghcr-secret
+        # pod:
+        #   imagePullSecrets:
+        #     - name: ghcr-secret
         containers:
           app:
             image:
