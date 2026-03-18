@@ -1,6 +1,6 @@
 # Multi-stage build for optimized image size
 # Stage 1: Builder
-FROM python:3.14-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /build
 
@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Runtime
-FROM python:3.14-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -33,12 +33,12 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
-COPY src/main.py src/azure_service.py ./
+COPY src/*.py ./
 COPY src/static ./static/
 
 # Create a non-root user with specific UID/GID
 RUN groupadd -r -g 1000 app && \
-    useradd -r -u 1000 -g app -m -s /bin/bash app && \
+    useradd -r -u 1000 -g app -M -s /sbin/nologin app && \
     chown -R app:app /app
 
 # Switch to non-root user
