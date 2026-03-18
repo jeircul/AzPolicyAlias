@@ -1,6 +1,6 @@
 # Multi-stage build for optimized image size
 # Stage 1: Builder
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /build
 
@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Runtime
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
