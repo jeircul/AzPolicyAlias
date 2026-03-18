@@ -4,18 +4,17 @@ FROM python:3.13-slim AS builder
 
 WORKDIR /build
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    python3-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Install uv for fast, deterministic installs
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy requirements and install to a virtual environment
-COPY requirements.txt .
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Tell uv to create the venv at a known path for the COPY in stage 2
+ENV UV_PROJECT_ENVIRONMENT=/.venv
+
+# Copy project metadata only (avoids cache busting on src changes)
+COPY pyproject.toml uv.lock ./
+
+# Install runtime deps into an isolated venv — no dev deps, no editable install
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Stage 2: Runtime
 FROM python:3.13-slim
@@ -29,8 +28,8 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean
 
 # Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+COPY --from=builder /.venv /.venv
+ENV PATH="/.venv/bin:$PATH"
 
 # Copy application code
 COPY src/*.py ./
