@@ -1,0 +1,42 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    "group:allNonMajor"
+  ],
+  "labels": ["dependencies"],
+  "assignees": ["jeircul"],
+  "packageRules": [
+    {
+      "description": "Group all GitHub Actions updates",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "automerge": false
+    },
+    {
+      "description": "Group all Docker image updates",
+      "matchManagers": ["dockerfile"],
+      "groupName": "docker-images",
+      "automerge": false
+    },
+    {
+      "description": "Group all Python dependency updates",
+      "matchManagers": ["uv"],
+      "groupName": "python-deps",
+      "automerge": false
+    },
+    {
+      "description": "Automerge patch-level Python dev-dependency bumps",
+      "matchManagers": ["uv"],
+      "matchDepTypes": ["dev"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true
+    }
+  ],
+  "schedule": ["every weekend"],
+  "prHourlyLimit": 4,
+  "prConcurrentLimit": 10,
+  "rebaseWhen": "conflicted"
+}

@@ -5,12 +5,20 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from azure.core.exceptions import (AzureError, ClientAuthenticationError,
-                                   HttpResponseError, ServiceRequestError)
-from azure.identity import (AzureCliCredential, ChainedTokenCredential,
-                            ClientSecretCredential, DefaultAzureCredential)
+from azure.core.exceptions import (
+    AzureError,
+    ClientAuthenticationError,
+    HttpResponseError,
+    ServiceRequestError,
+)
+from azure.identity import (
+    AzureCliCredential,
+    ChainedTokenCredential,
+    ClientSecretCredential,
+    DefaultAzureCredential,
+)
 from azure.mgmt.resource import ResourceManagementClient
 
 logger = logging.getLogger(__name__)
@@ -23,9 +31,9 @@ class RetryWithBackoff:  # pylint: disable=too-few-public-methods
         self.max_retries = max_retries
         self.base_delay = base_delay
 
-    async def execute(self, func, *args, **kwargs):
-        """Execute function with exponential backoff retry"""
-        last_exception = None
+    async def execute(self, func, *args, **kwargs) -> Any:
+        """Execute function with exponential backoff retry."""
+        last_exception: Exception | None = None
 
         for attempt in range(self.max_retries):
             try:
@@ -55,25 +63,25 @@ class RetryWithBackoff:  # pylint: disable=too-few-public-methods
 
 
 class AzurePolicyService:
-    def __init__(self, subscription_id: str, cache_duration_hours: int = 1):
+    def __init__(self, subscription_id: str, cache_duration_hours: int = 1) -> None:
         self.subscription_id = subscription_id
-        self.client: Optional[ResourceManagementClient] = None
-        self.cache: Dict[str, Any] = {}
-        self.cache_timestamp: Optional[datetime] = None
+        self.client: ResourceManagementClient | None = None
+        self.cache: dict[str, Any] = {}
+        self.cache_timestamp: datetime | None = None
         self.cache_duration = timedelta(hours=cache_duration_hours)
         self.retry_helper = RetryWithBackoff(max_retries=3, base_delay=1.0)
         self._executor = ThreadPoolExecutor(max_workers=4)
         self._setup_client()
 
-    def _setup_client(self):
-        """Setup Azure client with robust authentication chain"""
+    def _setup_client(self) -> None:
+        """Setup Azure client with robust authentication chain."""
         try:
             # Get required environment variables
             client_id = os.getenv("AZURE_CLIENT_ID")
             tenant_id = os.getenv("AZURE_TENANT_ID")
             client_secret = os.getenv("AZURE_CLIENT_SECRET")
 
-            credentials = []
+            credentials: list[Any] = []
 
             # Try Azure CLI first (for local development)
             try:
@@ -123,9 +131,7 @@ class AzurePolicyService:
             return False
         return datetime.now() - self.cache_timestamp < self.cache_duration
 
-    async def get_policy_aliases(
-        self, force_refresh: bool = False
-    ) -> List[Dict[str, Any]]:
+    async def get_policy_aliases(self, force_refresh: bool = False) -> list[dict[str, Any]]:
         """Get all policy aliases with caching and retry logic"""
         if not force_refresh and self._is_cache_valid():
             cached_count = len(self.cache.get("aliases", []))
@@ -139,7 +145,7 @@ class AzurePolicyService:
 
         # Use retry helper with async execution
         async def fetch_with_retry():
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(self._executor, self._fetch_aliases_sync)
 
         try:
@@ -160,7 +166,7 @@ class AzurePolicyService:
                 return self.cache["aliases"]
             raise
 
-    def _fetch_aliases_sync(self) -> List[Dict[str, Any]]:
+    def _fetch_aliases_sync(self) -> list[dict[str, Any]]:
         """Synchronous method to fetch aliases from Azure with error handling"""
         if not self.client:
             raise ValueError("Azure client not initialized")
@@ -177,19 +183,19 @@ class AzurePolicyService:
                 fetch_time,
             )
 
-            all_aliases: List[Dict[str, Any]] = []
+            all_aliases: list[dict[str, Any]] = []
             providers_with_aliases = 0
-            failed_providers: List[str] = []
+            failed_providers: list[str] = []
             lock = threading.Lock()
             max_workers = 25
 
-            def fetch_provider_aliases(provider_summary) -> List[Dict[str, Any]]:
+            def fetch_provider_aliases(provider_summary) -> list[dict[str, Any]]:
                 namespace = getattr(provider_summary, "namespace", None)
                 if not namespace:
                     return []
 
                 try:
-                    provider = self.client.providers.get(
+                    provider = self.client.providers.get(  # type: ignore[union-attr]
                         namespace, expand="resourceTypes/aliases"
                     )
                 except AzureError as err:
@@ -200,12 +206,12 @@ class AzurePolicyService:
                     )
                     return []
 
-                aliases: List[Dict[str, Any]] = []
+                aliases: list[dict[str, Any]] = []
                 for resource_type in provider.resource_types or []:
                     for alias in resource_type.aliases or []:
                         default_pattern = None
-                        if hasattr(alias, "default_pattern") and alias.default_pattern:
-                            pattern_obj = alias.default_pattern
+                        pattern_obj = getattr(alias, "default_pattern", None)
+                        if pattern_obj:
                             default_pattern = {
                                 "phrase": getattr(pattern_obj, "phrase", None),
                                 "variable": getattr(pattern_obj, "variable", None),
@@ -282,12 +288,12 @@ class AzurePolicyService:
             logger.error("Unexpected error while fetching aliases: %s", err)
             raise
 
-    async def get_statistics(self) -> Dict[str, Any]:
-        """Get comprehensive statistics about policy aliases"""
+    async def get_statistics(self) -> dict[str, Any]:
+        """Return aggregate statistics about cached policy aliases."""
         aliases = await self.get_policy_aliases()
-        namespaces = set()
-        resource_types = set()
-        types_by_namespace: Dict[str, int] = {}
+        namespaces: set[str] = set()
+        resource_types: set[str] = set()
+        types_by_namespace: dict[str, int] = {}
 
         for alias in aliases:
             ns = alias["namespace"]
@@ -305,30 +311,28 @@ class AzurePolicyService:
                 else None
             ),
             "cache_valid": self._is_cache_valid(),
-            "top_namespaces": sorted(
-                types_by_namespace.items(), key=lambda x: x[1], reverse=True
-            )[:10],
+            "top_namespaces": sorted(types_by_namespace.items(), key=lambda x: x[1], reverse=True)[
+                :10
+            ],
         }
 
     async def search_aliases(
-        self, query: str, namespace_filter: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """Search aliases with improved filtering logic"""
+        self, query: str, namespace_filter: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Search aliases with AND-logic multi-term filtering."""
         aliases = await self.get_policy_aliases()
 
         if not query and not namespace_filter:
             return aliases
 
-        filtered_aliases = []
+        filtered_aliases: list[dict[str, Any]] = []
         query_lower = query.lower() if query else ""
         query_terms = query_lower.split() if query_lower else []
 
         for alias in aliases:
-            # Apply namespace filter if provided
             if namespace_filter and alias["namespace"] != namespace_filter:
                 continue
 
-            # Apply text search if query provided
             if query_terms:
                 searchable_text = " ".join(
                     [
@@ -339,7 +343,6 @@ class AzurePolicyService:
                     ]
                 ).lower()
 
-                # All terms must match (AND logic)
                 if not all(term in searchable_text for term in query_terms):
                     continue
 
@@ -347,10 +350,10 @@ class AzurePolicyService:
 
         return filtered_aliases
 
-    async def get_namespaces_with_counts(self) -> List[Dict[str, Any]]:
-        """Get namespaces with alias counts"""
+    async def get_namespaces_with_counts(self) -> list[dict[str, Any]]:
+        """Return namespaces sorted by alias count descending."""
         aliases = await self.get_policy_aliases()
-        namespace_counts: Dict[str, int] = {}
+        namespace_counts: dict[str, int] = {}
 
         for alias in aliases:
             ns = alias["namespace"]
@@ -358,9 +361,7 @@ class AzurePolicyService:
 
         return [
             {"namespace": ns, "count": count}
-            for ns, count in sorted(
-                namespace_counts.items(), key=lambda x: (-x[1], x[0])
-            )
+            for ns, count in sorted(namespace_counts.items(), key=lambda x: (-x[1], x[0]))
         ]
 
     def __del__(self):

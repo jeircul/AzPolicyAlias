@@ -43,6 +43,14 @@ spec:
             envFrom:
               - secretRef:
                   name: azpolicyalias-secrets
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              capabilities:
+                drop:
+                  - ALL
             probes:
               liveness:
                 enabled: true
