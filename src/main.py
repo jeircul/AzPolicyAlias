@@ -101,9 +101,20 @@ class RefreshResponse(BaseModel):
 # Module-level reference set by lifespan so endpoints can access it
 azure_service: AzurePolicyService | None = None
 
-# Simple in-memory rate-limit state for /api/refresh
+# Simple in-memory rate-limit state shared by every forced Azure refresh
 _last_refresh_time: float = 0.0
 _REFRESH_COOLDOWN_SECONDS = 30
+
+
+def _claim_refresh_slot() -> float:
+    """Return seconds left in the cooldown, or 0 after claiming a refresh slot."""
+    global _last_refresh_time
+    now = time.time()
+    remaining = _REFRESH_COOLDOWN_SECONDS - (now - _last_refresh_time)
+    if remaining > 0:
+        return remaining
+    _last_refresh_time = now
+    return 0
 
 
 @asynccontextmanager
@@ -238,7 +249,8 @@ async def get_aliases(
         if query or namespace:
             aliases = await svc.search_aliases(query or "", namespace)
         else:
-            aliases = await svc.get_policy_aliases(force_refresh)
+            # Inside the cooldown, serve the cache instead of 429 so the UI refresh button keeps working
+            aliases = await svc.get_policy_aliases(force_refresh and not _claim_refresh_slot())
 
         return AliasesResponse(
             aliases=[PolicyAlias(**alias) for alias in aliases],
@@ -278,17 +290,11 @@ async def get_namespaces(
 @app.post("/api/refresh", response_model=RefreshResponse, tags=["Cache"])
 async def refresh_cache():
     """Force refresh the policy aliases cache from Azure API."""
-    global _last_refresh_time
-
-    # Rate-limit: prevent hammering the Azure API
-    now = time.time()
-    if now - _last_refresh_time < _REFRESH_COOLDOWN_SECONDS:
-        remaining = int(_REFRESH_COOLDOWN_SECONDS - (now - _last_refresh_time))
+    if remaining := _claim_refresh_slot():
         raise HTTPException(
             status_code=429,
-            detail=f"Refresh rate-limited. Try again in {remaining}s.",
+            detail=f"Refresh rate-limited. Try again in {int(remaining)}s.",
         )
-    _last_refresh_time = now
 
     start_time = time.time()
     svc = _get_service()
