@@ -134,6 +134,18 @@ class TestAliasesEndpoint:
         required_fields = {"namespace", "resource_type", "alias_name"}
         assert required_fields.issubset(alias.keys())
 
+    def test_force_refresh_cooldown_serves_cache(self, client: TestClient):
+        import src.main as main_module
+
+        svc = main_module.azure_service
+        r1 = client.get("/api/aliases?force_refresh=true")
+        r2 = client.get("/api/aliases?force_refresh=true")
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+        assert r2.json()["count"] == len(SAMPLE_ALIASES)
+        assert [c.args for c in svc.get_policy_aliases.await_args_list] == [(True,), (False,)]
+        assert client.post("/api/refresh").status_code == 429
+
 
 class TestStatisticsEndpoint:
     def test_statistics_200(self, client: TestClient):
