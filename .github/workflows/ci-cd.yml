@@ -57,6 +57,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # 14-digit UTC timestamp sorts by build time for the Flux ImagePolicy in jeircul/oci.
+      - name: Build timestamp
+        id: tag
+        run: echo "ts=$(date -u +'%Y%m%d%H%M%S')" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -78,6 +83,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=main-${{ steps.tag.outputs.ts }},enable={{is_default_branch}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
