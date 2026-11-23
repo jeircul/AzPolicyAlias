@@ -1,6 +1,6 @@
 # Multi-stage build for optimized image size
 # Stage 1: Builder — install deps via uv into an isolated venv
-FROM python:3.15-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /build
 
@@ -19,7 +19,7 @@ COPY src/ ./src/
 RUN uv sync --frozen --no-dev
 
 # Stage 2: Runtime — lean image with no build tooling
-FROM python:3.15-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
