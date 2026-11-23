@@ -3,7 +3,7 @@
   "extends": ["github>jeircul/renovate-config"],
   "packageRules": [
     {
-      "description": "uvloop, httptools and watchfiles ship no cp315 wheels yet; slim has no compiler or Rust",
+      "description": "uvloop, httptools, watchfiles, pyyaml and cffi ship no cp315 wheels yet; slim has no compiler or Rust. Drop when they do.",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["python"],
       "allowedVersions": "<3.15"
