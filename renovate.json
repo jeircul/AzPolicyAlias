@@ -1,4 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>jeircul/renovate-config"]
+  "extends": ["github>jeircul/renovate-config"],
+  "packageRules": [
+    {
+      "description": "uvloop, httptools and watchfiles ship no cp315 wheels yet; slim has no compiler or Rust",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["python"],
+      "allowedVersions": "<3.15"
+    }
+  ]
 }
